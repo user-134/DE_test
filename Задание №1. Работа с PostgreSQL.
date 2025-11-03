@@ -1,0 +1,67 @@
+CREATE TABLE users (
+    id SERIAL PRIMARY KEY,
+    name TEXT,
+    email TEXT,
+    role TEXT,
+    updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+);
+
+CREATE TABLE users_audit (
+    id SERIAL PRIMARY KEY,
+    user_id INTEGER,
+    changed_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+    changed_by TEXT,
+    field_changed TEXT,
+    old_value TEXT,
+    new_value TEXT
+);
+
+CREATE OR REPLACE FUNCTION users_audit_update()
+RETURNS TRIGGER AS $$
+BEGIN
+	IF OLD.name IS DISTINCT FROM NEW.name THEN
+		INSERT INTO users_audit(user_id, field_changed, old_value, new_value, changed_by)
+		VALUES (OLD.id, 'name', OLD.name, NEW.name, current_user);
+	END IF;
+	
+	IF OLD.email IS DISTINCT FROM NEW.email THEN
+		INSERT INTO users_audit(user_id, field_changed, old_value, new_value, changed_by)
+		VALUES (OLD.id, 'email', OLD.email, NEW.email, current_user);
+	END IF;
+	
+	IF OLD.role IS DISTINCT FROM NEW.role THEN
+		INSERT INTO users_audit(user_id, field_changed, old_value, new_value, changed_by)
+		VALUES (OLD.id, 'role', OLD.role, NEW.ROLE, current_user);
+	END IF;
+
+	RETURN NEW;		
+END;
+$$ LANGUAGE plpgsql;
+
+CREATE TRIGGER trigger_audit_update
+BEFORE UPDATE ON users
+FOR EACH ROW
+EXECUTE FUNCTION users_audit_update();
+
+CREATE OR REPLACE FUNCTION users_audit_export()
+RETURNS void AS $$
+DECLARE 
+	export_path TEXT;
+	yesterday_date TEXT;
+BEGIN
+	yesterday_date := to_char(CURRENT_DATE - INTERVAL '1 day', 'YYYY-MM-DD');
+	export_path := '/tmp/users_audit_export_' || yesterday_date || '.csv';
+
+	EXECUTE
+		'COPY (SELECT * FROM users_audit WHERE changed_at::date = ' || quote_literal(yesterday_date) || ') TO ' || quote_literal(export_path) || ' WITH CSV HEADER';
+
+	RAISE NOTICE 'Экспорт завершен: %', export_path;
+END;
+$$ LANGUAGE plpgsql;
+
+CREATE EXTENSION IF NOT EXISTS pg_cron;
+
+SELECT cron.schedule(
+	'0 3 * * *',
+	'SELECT users_audit_export();'
+);
