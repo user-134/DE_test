@@ -79,7 +79,7 @@ ORDER BY d.first_date;
 
 -- Вставка тестовых данных
 -- События 10 дней назад
-  VALUES
+INSERT INTO user_events VALUES
 (1, 'login', 0, now() - INTERVAL 10 DAY),
 (2, 'signup', 0, now() - INTERVAL 10 DAY),
 (3, 'login', 0, now() - INTERVAL 10 DAY);
@@ -122,7 +122,7 @@ SELECT
 	event_type,
 	uniqMerge(unique_users) AS unique_users,
 	sumMerge(total_spent) AS total_spent,
-	countMerge(actions_count) AS points_spent
+	countMerge(actions_count) AS total_actions
 FROM user_events_agg
 GROUP BY event_type, event_date
 ORDER BY event_date, event_type;
