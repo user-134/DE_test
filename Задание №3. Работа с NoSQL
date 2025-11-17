@@ -112,30 +112,41 @@ print("✅ Данные успешно загружены в MongoDB")
 now = datetime.now()
 t30, t14 = now - timedelta(days=30), now - timedelta(days=14)
 
-# Пользователи зарегистрировавшиеся > 30 дней назад
-old_users = set(collection.distinct("user_id", {"user_info.registration_date": {"$lt": t30}}))
+# Собираем информацию по пользователям: последняя активность и дата регистрации
+pipeline = [
+    {
+        "$group": {
+            "_id": "$user_id",
+            "last_event": {"$max": "$event_time"},
+            "registration_date": {"$first": "$user_info.registration_date"}
+        }
+    }
+]
 
-# Пользователи проявившие активность последние 14 дней
-active_users = set(collection.distinct("user_id", {"event_time": {"$gte": t14}}))
+users = list(collection.aggregate(pipeline))
 
-# Пользователи попадающие в архив
-users_to_archive = old_users - active_users
+# Определяем кого архивировать
+users_to_archive = [
+    u["_id"]
+    for u in users
+    if u["registration_date"] < t30 and u["last_event"] < t14
+]
 
 # Перенос в архив
 if users_to_archive:
-    docs = list(collection.find({"user_id": {"$in": list(users_to_archive)}}))
+    docs = list(collection.find({"user_id": {"$in": users_to_archive}}))
     archived.insert_many(docs)
-    collection.delete_many({"user_id": {"$in": list(users_to_archive)}})
+    collection.delete_many({"user_id": {"$in": users_to_archive}})
 
 # Создаем отчет
 report = {
     "date": now.strftime("%Y-%m-%d"),
     "archived_users_count": len(users_to_archive),
-    "archived_user_ids": list(users_to_archive)
+    "archived_user_ids": users_to_archive
 }
 
 os.makedirs("reports", exist_ok=True)
 file = f"reports/archive_report: {report['date']}.json"
 json.dump(report, open(file, "w", encoding="utf-8"), indent=4, ensure_ascii=False)
 
-print("✅ Отчет успешно сохранен", file)
+print("✅ Отчет успешно сохранен. Архивировано пользователей:", len(users_to_archive))
