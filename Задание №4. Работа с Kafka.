@@ -1,0 +1,212 @@
+Данный проект демонстрирует надёжную передачу данных из PostgreSQL в ClickHouse через Kafka.
+Основная задача — полностью исключить дублирование при повторных запусках миграции.
+
+Это достигается с помощью:
+- поля sent_to_kafka BOOLEAN в PostgreSQL
+- продюсера, который отправляет только новые строки
+- Kafka как транспорта событий
+- консьюмера, который пишет в ClickHouse всё, что получает
+
+Архитектура пайплайна:
+PostgreSQL → Kafka Producer → Kafka → Kafka Consumer → ClickHouse
+PostgreSQL хранит события пользователей.
+Kafka Producer читает только строки sent_to_kafka = FALSE.
+После отправки продюсер обновляет флаг на TRUE.
+Kafka надёжно доставляет сообщение.
+Kafka Consumer читает события и вставляет их в ClickHouse.
+ClickHouse получает данные строго один раз, без дублей.
+
+---
+
+Создадим docker-compose:
+
+version: '3.8'
+
+services:
+  zookeeper:
+    image: confluentinc/cp-zookeeper:7.3.3
+    ports:
+      - "2181:2181"
+    environment:
+      ZOOKEEPER_CLIENT_PORT: 2181
+
+  kafka:
+    image: confluentinc/cp-kafka:7.3.3
+    ports:
+      - "9092:9092"
+    depends_on:
+      - zookeeper
+    environment:
+      KAFKA_ZOOKEEPER_CONNECT: zookeeper:2181
+      KAFKA_ADVERTISED_LISTENERS: PLAINTEXT://localhost:9092
+      KAFKA_OFFSETS_TOPIC_REPLICATION_FACTOR: 1
+
+  postgres:
+    image: postgres:15
+    ports:
+      - "5432:5432"
+    environment:
+      POSTGRES_USER: admin
+      POSTGRES_PASSWORD: admin
+      POSTGRES_DB: test_db
+
+  clickhouse:
+    image: clickhouse/clickhouse-server:latest
+    container_name: clickhouse
+    restart: always
+    ports:
+      - "8123:8123"
+      - "9000:9000"
+    ulimits:
+      nofile:
+        soft: 262144
+        hard: 262144            
+    environment:
+      CLICKHOUSE_USER: user
+      CLICKHOUSE_PASSWORD: strongpassword
+      CLICKHOUSE_DEFAULT_ACCESS_MANAGEMENT: 1
+    volumes:
+      - clickhouse_data:/var/lib/clickhouse    
+
+volumes:
+  pgdata:
+  clickhouse_data:
+
+---
+
+Перед запуском добавляем дополнительное логическое поле в таблице — sent_to_kafka BOOLEAN, которое будет сигнализировать, были ли данные уже отправлены в Kafka.
+
+ALTER TABLE user_logins
+ADD COLUMN sent_to_kafka BOOLEAN DEFAULT FALSE;
+
+Это поле — маркер, оно показывает:
+FALSE → эта строка ещё не отправлена в Kafka
+TRUE → строка уже была отправлена и больше отправляться не должна
+
+Важно: это поле видит только продюсер, а НЕ Kafka и НЕ ClickHouse.
+
+Продюсер выбирает строки с FALSE → отправляет их в Kafka → обновляет эти строки
+
+---
+
+Логика работы продюсера:
+Продюсер выбирает только строки, которые ещё не были отправлены, после публикации сообщения флаг обновляется, поэтому Kafka никогда не получит одну и ту же строку дважды.
+
+# producer_pg_to_kafka.py
+import psycopg2
+from kafka import KafkaProducer
+import json
+import time
+
+producer = KafkaProducer(
+    bootstrap_servers='localhost:9092',
+    value_serializer=lambda v: json.dumps(v, ensure_ascii=False).encode('utf-8')
+)
+
+conn = psycopg2.connect(
+    dbname="test_db", user="admin", password="admin", host="localhost", port=5432
+)
+cursor = conn.cursor()
+
+cursor.execute("""
+                SELECT id, 
+                       username, 
+                       event_type, 
+                       extract(epoch FROM event_time) 
+                FROM user_logins
+                WHERE sent_to_kafka = FALSE
+                ORDER BY id
+                """)
+rows = cursor.fetchall()
+
+for row in rows:
+    id_ = row[0]
+    data = {
+        "user": row[1],
+        "event": row[2],
+        "timestamp": float(row[3])  # преобразуем Decimal → float
+    }
+    producer.send("user_events", value=data)
+    print("Sent:", data)
+
+    cursor.execute(
+        "UPDATE user_logins SET sent_to_kafka = TRUE WHERE id = %s",
+        (id_,)
+    )
+    conn.commit()
+
+    time.sleep(0.5)
+
+---
+
+Логика работы консьюмера:
+Консьюмер просто получает события и вставляет в ClickHouse:
+ClickHouse получает данные ровно один раз, потому что Kafka больше не отправляет строк, у которых уже стоит TRUE.
+Консьюмер — вставляет всё, что приходит из Kafka, в ClickHouse. Консьюмер НЕ проверяет sent_to_kafka, он о нём не знает.
+
+# consumer_to_clickhouse.py
+from kafka import KafkaConsumer
+import json
+import clickhouse_connect
+
+consumer = KafkaConsumer(
+    "user_events",
+    bootstrap_servers="localhost:9092",
+    auto_offset_reset='earliest',
+    enable_auto_commit=True,
+    value_deserializer=lambda x: json.loads(x.decode('utf-8'))
+)
+
+client = clickhouse_connect.get_client(host='localhost', port=8123, username='user', password='strongpassword')
+
+client.command("""
+CREATE TABLE IF NOT EXISTS user_logins (
+    username String,
+    event_type String,
+    event_time DateTime
+) ENGINE = MergeTree()
+ORDER BY event_time
+""")
+
+for message in consumer:
+    data = message.value
+    print("Received:", data)
+    client.command(
+        f"INSERT INTO user_logins (username, event_type, event_time) VALUES ('{data['user']}', '{data['event']}', toDateTime({data['timestamp']}))"
+    )
+
+---
+
+Порядок запуска пайплайна:
+
+1. Создать колонку в Postgres
+
+ALTER TABLE user_logins ADD COLUMN sent_to_kafka BOOLEAN DEFAULT FALSE;
+
+2. Запустить Docker Compose
+
+docker-compose up -d
+
+3. Запустить продюсер
+
+python producer_pg_to_kafka.py
+
+4. Запустить консьюмера
+
+python consumer_to_clickhouse.py
+
+5. Проверка результата:
+
+В Postgres: 
+SELECT id, username, sent_to_kafka
+FROM user_logins
+ORDER BY id;
+В таблице все данные в поле sent_to_kafka имеют значение TRUE.
+
+В ClickHouse:
+SELECT *
+FROM user_logins
+ORDER BY event_time;
+В таблице находятся данные без дублей.
+
+В результате реализации получится устойчивое решение миграции данных с защитой от дубликатов.
