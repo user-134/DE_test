@@ -12,22 +12,21 @@ conn = psycopg2.connect(
     port=config.PG_PORT,
 )
 
-producer = KafkaProducer(
-    bootstrap_servers=config.KAFKA_BOOTSTRAP,
-    value_serializer=lambda v: json.dumps(v).encode("utf-8")
-)
-
 cursor = conn.cursor()
 
-cursor.execute("""
-                SELECT id, 
-                       username, 
-                       event_type, 
-                       extract(epoch FROM event_time) 
-                FROM user_logins
-                WHERE sent_to_kafka = FALSE
-                """)
+# Настраиваем Kafka Producer
+producer = KafkaProducer(
+    bootstrap_servers=config.KAFKA_BOOTSTRAP,
+    value_serializer=lambda v: json.dumps(v, ensure_ascii=False).encode("utf-8")
+)
 
+# Выбираем только новые строки
+cursor.execute("""
+    SELECT id, username, event_type, extract(epoch FROM event_time)
+    FROM user_logins
+    WHERE sent_to_kafka = FALSE
+    ORDER BY id
+""")
 rows = cursor.fetchall()
 
 for row in rows:
@@ -40,9 +39,12 @@ for row in rows:
         "timestamp": float(row[3])  # преобразуем Decimal → float
     }
 
-    producer.send("user_events", value=data)
+# Отправляем в Kafka
+    producer.send(config.KAFKA_TOPIC, value=data)
+    producer.flush()
     print("Sent:", data)
 
+    # Обновляем флаг, чтобы не отправлять повторно
     cursor.execute(
         "UPDATE user_logins SET sent_to_kafka = TRUE WHERE id = %s",
         (id_,)
@@ -50,3 +52,6 @@ for row in rows:
     conn.commit()
 
     time.sleep(0.5)
+
+cursor.close()
+conn.close()
