@@ -4,18 +4,22 @@ import json
 import clickhouse_connect
 import time
 
+# Настраиваем Kafka Consumer
 consumer = KafkaConsumer(
     config.KAFKA_TOPIC,
     bootstrap_servers=config.KAFKA_BOOTSTRAP,
     value_deserializer=lambda x: json.loads(x.decode("utf-8")),
-    group_id="user_events_group",
+    auto_offset_reset="earliest",
+    enable_auto_commit=True,
+    group_id=config.KAFKA_GROUP  # обязательно, чтобы не было повторного чтения
 )
 
+# Подключаемся к ClickHouse
 client = clickhouse_connect.get_client(
     host=config.CH_HOST,
     port=config.CH_PORT,
     username=config.CH_USER,
-    password=config.CH_PASS
+    password=config.CH_PASSWORD
 )
 
 # В консьюмере должен быть group_id. Иначе консьюмер работает вот так: каждый запуск = чтение топика заново → дубликаты в ClickHouse.
