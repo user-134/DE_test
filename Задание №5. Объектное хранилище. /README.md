@@ -265,7 +265,7 @@ Expiration: 3 days
 - Реализована защита от перезаписи данных с помощью versioning
 - Настроена автоматическая очистка хранилища через lifecycle policy
 
-===
+---
 
 ## Задание №3. Автоматизированный пайплайн
 
@@ -281,12 +281,105 @@ Expiration: 3 days
 
 Пайплайн реализован в одном Python-скрипте.
 
+```python
+import asyncio
+import logging
+import shutil
+from pathlib import Path
+from datetime import datetime
+
+import pandas as pd
+import boto3
+from botocore.client import Config
+from watchfiles import awatch
+
+# --- Настройки (минимум) ---
+INPUT = Path("input")
+TMP = Path("tmp")
+ARCHIVE = Path("archive")
+LOG_FILE = Path("pipeline.log")
+
+ENDPOINT = "http://localhost:9002"
+ACCESS_KEY = "minioadmin"
+SECRET_KEY = "minioadmin123"
+BUCKET = "my-bucket"
+
+PROCESSED_PREFIX = "processed"
+LOG_KEY = "logs/pipeline.log"
+
+# --- S3 ---
+s3 = boto3.client(
+    "s3",
+    endpoint_url=ENDPOINT,
+    aws_access_key_id=ACCESS_KEY,
+    aws_secret_access_key=SECRET_KEY,
+    config=Config(signature_version="s3v4"),
+    region_name="us-east-1",
+)
+
+def upload(local_path: Path, key: str):
+    s3.upload_file(str(local_path), BUCKET, key)
+
+def setup_logging():
+    logging.basicConfig(
+        level=logging.INFO,
+        format="%(asctime)s | %(levelname)s | %(message)s",
+        handlers=[
+            logging.FileHandler(LOG_FILE, encoding="utf-8"),
+            logging.StreamHandler(),
+        ],
+    )
+
+async def handle_csv(path: Path):
+    logging.info(f"New file: {path.name}")
+
+    # 1) pandas read + filter
+    df = pd.read_csv(path)
+    df2 = df[df["amount"] > 1000]  # любое условие
+
+    # 2) save temp
+    TMP.mkdir(exist_ok=True)
+    ts = datetime.utcnow().strftime("%Y%m%d_%H%M%S")
+    out = TMP / f"{path.stem}_{ts}.csv"
+    df2.to_csv(out, index=False)
+    logging.info(f"Processed saved: {out}")
+
+    # 3) async upload processed
+    key = f"{PROCESSED_PREFIX}/{out.name}"
+    await asyncio.to_thread(upload, out, key)
+    logging.info(f"Uploaded: s3://{BUCKET}/{key}")
+
+    # 4) move original to archive
+    ARCHIVE.mkdir(exist_ok=True)
+    shutil.move(str(path), str(ARCHIVE / path.name))
+    logging.info(f"Archived: {path.name}")
+
+    # 5) upload log (same key => versioning keeps history)
+    await asyncio.to_thread(upload, LOG_FILE, LOG_KEY)
+    logging.info(f"Log uploaded: s3://{BUCKET}/{LOG_KEY}")
+
+async def main():
+    setup_logging()
+    INPUT.mkdir(exist_ok=True)
+
+    logging.info(f"Watching: {INPUT.resolve()}")
+    async for changes in awatch(INPUT):
+        for _, p in changes:
+            p = Path(p)
+            if p.suffix.lower() == ".csv" and p.exists():
+                await handle_csv(p)
+
+if __name__ == "__main__":
+    asyncio.run(main())
+```
+
 ---
 
 ## Общая архитектура пайплайна
 
 Пайплайн работает по событийной модели и запускается автоматически при появлении новых файлов в заданной директории.
 
+```yaml
 Общий поток данных:
 input/ (новый файл)
 ↓
@@ -301,6 +394,7 @@ Async upload → S3 (processed/)
 archive/ (исходный файл)
 ↓
 pipeline.log → S3 (logs/, versioned)
+```
 
 ---
 
@@ -335,8 +429,8 @@ pipeline.log → S3 (logs/, versioned)
 
 Пайплайн использует библиотеку `watchfiles` для отслеживания директории `input/`.
 
-- пайплайн запускается один раз\
-- далее он постоянно ожидает появления новых файлов\
+- пайплайн запускается один раз
+- далее он постоянно ожидает появления новых файлов
 - при появлении нового `.csv`-файла автоматически запускается обработка
 
 Ручной перезапуск для каждого файла не требуется.
@@ -359,7 +453,7 @@ pipeline.log → S3 (logs/, versioned)
 
 Обработанный файл из `tmp/`:
 
-- асинхронно загружается в S3-совместимое хранилище (MinIO)\
+- асинхронно загружается в S3-совместимое хранилище (MinIO)
 - сохраняется в бакет в префикс `processed/`
 
 Асинхронность реализована через `asyncio.to_thread`, что позволяет не блокировать основной event-loop пайплайна.
@@ -373,7 +467,7 @@ pipeline.log → S3 (logs/, versioned)
 - исходный CSV перемещается из `input/` в `archive/`
 
 Таким образом:
-- один и тот же файл не обрабатывается повторно\
+- один и тот же файл не обрабатывается повторно
 - сохраняется история входных данных
 
 ---
