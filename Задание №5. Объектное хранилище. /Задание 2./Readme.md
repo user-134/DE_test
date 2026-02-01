@@ -3,13 +3,6 @@
 В рамках задания была настроена работа с S3-совместимым Object Storage на примере **MinIO** (Community Edition).  
 MinIO используется как локальный аналог Selectel/AWS S3 и полностью совместим с S3 API.
 
-Задание состоит из трёх частей:
-1. Настройка bucket policy (public read / private write)
-2. Включение versioning и работа с версиями объектов
-3. Настройка lifecycle policy (автоматическое удаление объектов)
-
----
-
 ## Примечание
 
 В используемой версии MinIO Community Web UI отсутствует возможность настройки versioning и lifecycle policies.
@@ -24,6 +17,13 @@ MinIO используется как локальный аналог Selectel/A
   - MinIO Client (`mc`) — официальный CLI/API инструмент
 - Endpoint: `http://localhost:9002`
 - Web UI: `http://localhost:9001`
+
+---
+
+Задание №2 состоит из трёх частей:
+1. Настройка bucket policy (public read / private write)
+2. Включение versioning и работа с версиями объектов
+3. Настройка lifecycle policy (автоматическое удаление объектов)
 
 ---
 
@@ -54,12 +54,6 @@ MinIO используется как локальный аналог Selectel/A
 - Скриншоты:
   - настроек доступа бакета
     <img width="1352" height="69" alt="Снимок экрана 2026-02-01 в 18 49 56" src="https://github.com/user-attachments/assets/1fa9e6ef-1aac-4edb-9041-3da652996193" />
-
-  - успешного публичного скачивания
- 
-
-  - отказа записи без авторизации
-    
 
 ---
 
@@ -99,18 +93,20 @@ mc ls --versions localminio/my-bucket/sales.csv
 ```
 
 Скачивание предыдущей версии
+
 ```bash
 mc cp --version-id <OLD_VERSION_ID> \
   localminio/my-bucket/sales.csv \
   sales_old.csv
 ```
 
-Доказательства
-Скрин вывода mc version info
+Подтверждение:
 
-Скрин списка версий объекта
+- Скрин списка версий объекта
+<img width="764" height="90" alt="Снимок экрана 2026-02-01 в 19 22 29" src="https://github.com/user-attachments/assets/c4a8f28d-688b-4aae-b4c0-f2bf249bd0c0" />
 
 Скрин скачивания старой версии
+<img width="1346" height="54" alt="Снимок экрана 2026-02-01 в 19 24 46" src="https://github.com/user-attachments/assets/33f9a1f0-07a7-422e-9df8-58a3c6c599ab" />
 
 ---
 
@@ -157,4 +153,8 @@ Expiration: 3 days
 
 Все требования задания выполнены.
 Использованы допустимые способы настройки: Web UI и S3-compatible API (MinIO Client).
+
+---
+
+
 
