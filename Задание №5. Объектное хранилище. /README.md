@@ -293,7 +293,7 @@ import boto3
 from botocore.client import Config
 from watchfiles import awatch
 
-# --- Настройки (минимум) ---
+# --- Настройки ---
 INPUT = Path("input")
 TMP = Path("tmp")
 ARCHIVE = Path("archive")
@@ -333,28 +333,28 @@ def setup_logging():
 async def handle_csv(path: Path):
     logging.info(f"New file: {path.name}")
 
-    # 1) pandas read + filter
+    # 1) pandas обработка (фильтрация)
     df = pd.read_csv(path)
     df2 = df[df["amount"] > 1000]  # любое условие
 
-    # 2) save temp
+    # 2) сохраняем временный файл
     TMP.mkdir(exist_ok=True)
     ts = datetime.utcnow().strftime("%Y%m%d_%H%M%S")
     out = TMP / f"{path.stem}_{ts}.csv"
     df2.to_csv(out, index=False)
     logging.info(f"Processed saved: {out}")
 
-    # 3) async upload processed
+    # 3) асинхронная загрузка
     key = f"{PROCESSED_PREFIX}/{out.name}"
     await asyncio.to_thread(upload, out, key)
     logging.info(f"Uploaded: s3://{BUCKET}/{key}")
 
-    # 4) move original to archive
+    # 4) архивируем исходный файл
     ARCHIVE.mkdir(exist_ok=True)
     shutil.move(str(path), str(ARCHIVE / path.name))
     logging.info(f"Archived: {path.name}")
 
-    # 5) upload log (same key => versioning keeps history)
+    # 5) загружаем логм
     await asyncio.to_thread(upload, LOG_FILE, LOG_KEY)
     logging.info(f"Log uploaded: s3://{BUCKET}/{LOG_KEY}")
 
@@ -379,8 +379,8 @@ if __name__ == "__main__":
 
 Пайплайн работает по событийной модели и запускается автоматически при появлении новых файлов в заданной директории.
 
-```yaml
 Общий поток данных:
+```yaml
 input/ (новый файл)
 ↓
 File watcher (watchfiles)
