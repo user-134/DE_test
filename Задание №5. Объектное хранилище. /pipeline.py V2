@@ -1,0 +1,282 @@
+import os
+import time
+import asyncio
+import logging
+import shutil
+from pathlib import Path
+from datetime import datetime
+
+import pandas as pd
+import boto3
+from botocore.client import Config
+from botocore.exceptions import ClientError, EndpointConnectionError
+from watchfiles import awatch
+
+
+# ==========================
+# CONFIG (через env vars)
+# ==========================
+S3_ENDPOINT = os.getenv("S3_ENDPOINT", "http://localhost:9002")
+S3_ACCESS_KEY = os.getenv("S3_ACCESS_KEY", "minioadmin")
+S3_SECRET_KEY = os.getenv("S3_SECRET_KEY", "minioadmin123")
+S3_BUCKET = os.getenv("S3_BUCKET", "my-bucket")
+
+S3_PROCESSED_PREFIX = os.getenv("S3_PROCESSED_PREFIX", "processed")
+S3_LOG_KEY = os.getenv("S3_LOG_KEY", "logs/pipeline.log")
+
+INPUT_DIR = Path(os.getenv("INPUT_DIR", "./input"))
+TMP_DIR = Path(os.getenv("TMP_DIR", "./tmp"))
+ARCHIVE_DIR = Path(os.getenv("ARCHIVE_DIR", "./archive"))
+FAILED_DIR = Path(os.getenv("FAILED_DIR", "./failed"))
+
+LOG_FILE = Path(os.getenv("LOG_FILE", "./pipeline.log"))
+
+# Простое условие фильтрации (можно менять)
+FILTER_COLUMN = os.getenv("FILTER_COLUMN", "amount")
+FILTER_MIN_VALUE = float(os.getenv("FILTER_MIN_VALUE", "1000"))
+
+# Стабилизация файла
+STABILIZE_CHECKS = int(os.getenv("STABILIZE_CHECKS", "5"))     # сколько раз проверить размер
+STABILIZE_DELAY_SEC = float(os.getenv("STABILIZE_DELAY_SEC", "0.2"))  # задержка между проверками
+
+# Параллелизм: сколько файлов одновременно обрабатывать
+MAX_CONCURRENT_TASKS = int(os.getenv("MAX_CONCURRENT_TASKS", "2"))
+
+# Retry для S3 upload
+UPLOAD_RETRIES = int(os.getenv("UPLOAD_RETRIES", "3"))
+UPLOAD_RETRY_DELAY_SEC = float(os.getenv("UPLOAD_RETRY_DELAY_SEC", "0.5"))
+
+
+# ==========================
+# LOGGING
+# ==========================
+def setup_logging() -> None:
+    LOG_FILE.parent.mkdir(parents=True, exist_ok=True)
+    logger = logging.getLogger()
+    logger.setLevel(logging.INFO)
+
+    fmt = logging.Formatter("%(asctime)s | %(levelname)s | %(message)s")
+
+    fh = logging.FileHandler(LOG_FILE, encoding="utf-8")
+    fh.setFormatter(fmt)
+    logger.addHandler(fh)
+
+    sh = logging.StreamHandler()
+    sh.setFormatter(fmt)
+    logger.addHandler(sh)
+
+
+# ==========================
+# S3 CLIENT (минимум, но надёжно)
+# ==========================
+class S3Client:
+    def __init__(self, endpoint: str, access_key: str, secret_key: str, bucket: str):
+        self.bucket = bucket
+        self.s3 = boto3.client(
+            "s3",
+            endpoint_url=endpoint,
+            aws_access_key_id=access_key,
+            aws_secret_access_key=secret_key,
+            config=Config(
+                signature_version="s3v4",
+                retries={"max_attempts": 5, "mode": "standard"},
+            ),
+            region_name="us-east-1",
+        )
+
+    def upload_file(self, local_path: Path, key: str) -> None:
+        self.s3.upload_file(str(local_path), self.bucket, key)
+
+    def file_exists(self, key: str) -> bool:
+        try:
+            self.s3.head_object(Bucket=self.bucket, Key=key)
+            return True
+        except ClientError:
+            return False
+
+
+async def upload_with_retry_async(s3: S3Client, local_path: Path, key: str) -> None:
+    """
+    boto3 синхронный => грузим через to_thread + retry.
+    """
+    last_exc = None
+    for attempt in range(1, UPLOAD_RETRIES + 1):
+        try:
+            await asyncio.to_thread(s3.upload_file, local_path, key)
+            return
+        except (EndpointConnectionError, ClientError) as e:
+            last_exc = e
+            logging.warning(f"Upload failed (attempt {attempt}/{UPLOAD_RETRIES}) for {key}: {e}")
+            if attempt < UPLOAD_RETRIES:
+                await asyncio.sleep(UPLOAD_RETRY_DELAY_SEC * attempt)
+    raise last_exc  # type: ignore
+
+
+# ==========================
+# UTIL: file stabilization
+# ==========================
+def wait_until_file_stable(path: Path) -> bool:
+    """
+    Возвращает True, если файл стабилизировался по размеру.
+    Это защита от ситуации: watcher увидел файл раньше, чем он дописался.
+    """
+    if not path.exists():
+        return False
+
+    prev_size = -1
+    same_count = 0
+
+    for _ in range(STABILIZE_CHECKS):
+        try:
+            size = path.stat().st_size
+        except FileNotFoundError:
+            return False
+
+        if size == prev_size and size > 0:
+            same_count += 1
+        else:
+            same_count = 0
+            prev_size = size
+
+        time.sleep(STABILIZE_DELAY_SEC)
+
+    # считаем файл стабильным, если несколько раз подряд размер не менялся
+    return same_count >= 2
+
+
+# ==========================
+# CORE: pandas processing
+# ==========================
+def process_csv_sync(src_path: Path, tmp_dir: Path) -> Path:
+    """
+    Синхронная обработка (pandas): read -> validate -> filter -> write temp.
+    Запускается в отдельном потоке через asyncio.to_thread.
+    """
+    df = pd.read_csv(src_path)
+
+    if FILTER_COLUMN not in df.columns:
+        raise ValueError(f"Column '{FILTER_COLUMN}' not found. Columns={list(df.columns)}")
+
+    before = len(df)
+    df2 = df[df[FILTER_COLUMN] > FILTER_MIN_VALUE]
+    after = len(df2)
+
+    tmp_dir.mkdir(parents=True, exist_ok=True)
+    ts = datetime.utcnow().strftime("%Y%m%d_%H%M%S")
+    out = tmp_dir / f"{src_path.stem}_processed_{ts}.csv"
+    df2.to_csv(out, index=False)
+
+    logging.info(f"Processed rows: {before} -> {after} using condition {FILTER_COLUMN} > {FILTER_MIN_VALUE}")
+    return out
+
+
+def move_to_dir(src: Path, dst_dir: Path) -> Path:
+    dst_dir.mkdir(parents=True, exist_ok=True)
+    dst = dst_dir / src.name
+    shutil.move(str(src), str(dst))
+    return dst
+
+
+# ==========================
+# PIPELINE: one file end-to-end
+# ==========================
+async def upload_log_async(s3: S3Client) -> None:
+    """
+    Перезаливаем лог в S3 под одним и тем же ключом.
+    При включённом versioning сохраняются версии.
+    """
+    if not LOG_FILE.exists():
+        return
+    await upload_with_retry_async(s3, LOG_FILE, S3_LOG_KEY)
+    logging.info(f"Uploaded log to s3://{S3_BUCKET}/{S3_LOG_KEY} (versioning keeps history)")
+
+
+async def handle_file(s3: S3Client, file_path: Path, sem: asyncio.Semaphore) -> None:
+    async with sem:
+        try:
+            logging.info(f"Pipeline start: {file_path.name}")
+
+            # 1) wait until file is stable
+            if not await asyncio.to_thread(wait_until_file_stable, file_path):
+                raise RuntimeError("File did not stabilize (maybe still writing or empty)")
+
+            # 2) pandas processing in thread
+            tmp_path = await asyncio.to_thread(process_csv_sync, file_path, TMP_DIR)
+            logging.info(f"Temp created: {tmp_path}")
+
+            # 3) async upload processed file
+            key = f"{S3_PROCESSED_PREFIX}/{tmp_path.name}"
+            logging.info(f"Uploading processed file: s3://{S3_BUCKET}/{key}")
+            await upload_with_retry_async(s3, tmp_path, key)
+            logging.info("Processed upload OK")
+
+            # 4) archive original (or you can delete instead)
+            archived = await asyncio.to_thread(move_to_dir, file_path, ARCHIVE_DIR)
+            logging.info(f"Archived input: {archived}")
+
+            # 5) upload log (same key => versioning)
+            await upload_log_async(s3)
+
+            logging.info(f"Pipeline OK: {file_path.name}")
+
+        except Exception as e:
+            logging.exception(f"Pipeline FAILED for {file_path.name}: {e}")
+
+            # Если ошибка — уводим файл в failed/, чтобы не терять данные
+            try:
+                if file_path.exists():
+                    failed = await asyncio.to_thread(move_to_dir, file_path, FAILED_DIR)
+                    logging.info(f"Moved to failed: {failed}")
+            except Exception:
+                logging.exception("Failed to move file to failed/")
+
+            # Лог тоже выгружаем, чтобы ошибка попала в S3 (с версионированием)
+            try:
+                await upload_log_async(s3)
+            except Exception:
+                logging.exception("Failed to upload log after error")
+
+
+async def main() -> None:
+    setup_logging()
+
+    INPUT_DIR.mkdir(parents=True, exist_ok=True)
+    TMP_DIR.mkdir(parents=True, exist_ok=True)
+    ARCHIVE_DIR.mkdir(parents=True, exist_ok=True)
+    FAILED_DIR.mkdir(parents=True, exist_ok=True)
+
+    s3 = S3Client(S3_ENDPOINT, S3_ACCESS_KEY, S3_SECRET_KEY, S3_BUCKET)
+
+    logging.info("Watcher started")
+    logging.info(f"Watching: {INPUT_DIR.resolve()}")
+    logging.info(f"S3: endpoint={S3_ENDPOINT}, bucket={S3_BUCKET}")
+    logging.info(f"Filter: {FILTER_COLUMN} > {FILTER_MIN_VALUE}")
+
+    sem = asyncio.Semaphore(MAX_CONCURRENT_TASKS)
+    seen: set[str] = set()
+
+    async for changes in awatch(INPUT_DIR):
+        for _, changed_path in changes:
+            p = Path(changed_path)
+
+            # берём только CSV
+            if p.suffix.lower() != ".csv":
+                continue
+
+            # защита от дублей по пути (упрощённая)
+            key = str(p.resolve())
+            if key in seen:
+                continue
+
+            if not p.exists():
+                continue
+
+            seen.add(key)
+            logging.info(f"Detected new CSV: {p.name}")
+
+            # запускаем обработку, не блокируя watcher
+            asyncio.create_task(handle_file(s3, p, sem))
+
+
+if __name__ == "__main__":
+    asyncio.run(main())
