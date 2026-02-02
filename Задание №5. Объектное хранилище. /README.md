@@ -279,99 +279,15 @@ Expiration: 3 days
 - управление состоянием входных файлов
 - логирование и сохранение истории запусков
 
-Пайплайн реализован в одном Python-скрипте.
+Пайплайн реализован в Python-скрипте V1: https://github.com/user-134/DE_test/blob/main/Задание%20№5.%20Объектное%20хранилище.%20/pipeline.py%20V1
 
-```python
-import asyncio
-import logging
-import shutil
-from pathlib import Path
-from datetime import datetime
+Проблемы текущей версии:
+- Метод list_files не увидит все объекты, если их в бакете будет более 1000. При большом количестве объектов необходимо использовать пагинацию, чтобы получать полный объектов.\
+- Wawatch может обнаружить файл раньше, чем он запишется на диск полностью. Можно добавить проверку стабилизацию размера файла или файл записывать во временную папку и после записи перемещать в папку отслеживания.
+- Чтение и запись в pandas синхронные.Такие операции можно вынести в отдельный поток( asyncio.to_thread()), чтобы не тормозить обработку других задач.\
++ захардкоженные ключи из пайплайна нужно вынести в переменные окружения и добавить обработку ошибок (подключение к s3, проверка корректности csv и т.п..)
 
-import pandas as pd
-import boto3
-from botocore.client import Config
-from watchfiles import awatch
-
-# --- Настройки ---
-INPUT = Path("input")
-TMP = Path("tmp")
-ARCHIVE = Path("archive")
-LOG_FILE = Path("pipeline.log")
-
-ENDPOINT = "http://localhost:9002"
-ACCESS_KEY = "minioadmin"
-SECRET_KEY = "minioadmin123"
-BUCKET = "my-bucket"
-
-PROCESSED_PREFIX = "processed"
-LOG_KEY = "logs/pipeline.log"
-
-# --- S3 ---
-s3 = boto3.client(
-    "s3",
-    endpoint_url=ENDPOINT,
-    aws_access_key_id=ACCESS_KEY,
-    aws_secret_access_key=SECRET_KEY,
-    config=Config(signature_version="s3v4"),
-    region_name="us-east-1",
-)
-
-def upload(local_path: Path, key: str):
-    s3.upload_file(str(local_path), BUCKET, key)
-
-def setup_logging():
-    logging.basicConfig(
-        level=logging.INFO,
-        format="%(asctime)s | %(levelname)s | %(message)s",
-        handlers=[
-            logging.FileHandler(LOG_FILE, encoding="utf-8"),
-            logging.StreamHandler(),
-        ],
-    )
-
-async def handle_csv(path: Path):
-    logging.info(f"New file: {path.name}")
-
-    # 1) pandas обработка (фильтрация)
-    df = pd.read_csv(path)
-    df2 = df[df["amount"] > 1000]  # любое условие
-
-    # 2) сохраняем временный файл
-    TMP.mkdir(exist_ok=True)
-    ts = datetime.utcnow().strftime("%Y%m%d_%H%M%S")
-    out = TMP / f"{path.stem}_{ts}.csv"
-    df2.to_csv(out, index=False)
-    logging.info(f"Processed saved: {out}")
-
-    # 3) асинхронная загрузка
-    key = f"{PROCESSED_PREFIX}/{out.name}"
-    await asyncio.to_thread(upload, out, key)
-    logging.info(f"Uploaded: s3://{BUCKET}/{key}")
-
-    # 4) архивируем исходный файл
-    ARCHIVE.mkdir(exist_ok=True)
-    shutil.move(str(path), str(ARCHIVE / path.name))
-    logging.info(f"Archived: {path.name}")
-
-    # 5) загружаем логм
-    await asyncio.to_thread(upload, LOG_FILE, LOG_KEY)
-    logging.info(f"Log uploaded: s3://{BUCKET}/{LOG_KEY}")
-
-async def main():
-    setup_logging()
-    INPUT.mkdir(exist_ok=True)
-
-    logging.info(f"Watching: {INPUT.resolve()}")
-    async for changes in awatch(INPUT):
-        for _, p in changes:
-            p = Path(p)
-            if p.suffix.lower() == ".csv" and p.exists():
-                await handle_csv(p)
-
-if __name__ == "__main__":
-    asyncio.run(main())
-```
+Пайплайн c исправленными недочетами реализован в Python-скрипте V2: https://github.com/user-134/DE_test/blob/main/Задание%20№5.%20Объектное%20хранилище.%20/pipeline.py%20V2
 
 ---
 
