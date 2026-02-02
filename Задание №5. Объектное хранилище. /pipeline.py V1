@@ -1,0 +1,89 @@
+import asyncio
+import logging
+import shutil
+from pathlib import Path
+from datetime import datetime
+
+import pandas as pd
+import boto3
+from botocore.client import Config
+from watchfiles import awatch
+
+# --- Настройки ---
+INPUT = Path("input")
+TMP = Path("tmp")
+ARCHIVE = Path("archive")
+LOG_FILE = Path("pipeline.log")
+
+ENDPOINT = "http://localhost:9002"
+ACCESS_KEY = "minioadmin"
+SECRET_KEY = "minioadmin123"
+BUCKET = "my-bucket"
+
+PROCESSED_PREFIX = "processed"
+LOG_KEY = "logs/pipeline.log"
+
+# --- S3 ---
+s3 = boto3.client(
+    "s3",
+    endpoint_url=ENDPOINT,
+    aws_access_key_id=ACCESS_KEY,
+    aws_secret_access_key=SECRET_KEY,
+    config=Config(signature_version="s3v4"),
+    region_name="us-east-1",
+)
+
+def upload(local_path: Path, key: str):
+    s3.upload_file(str(local_path), BUCKET, key)
+
+def setup_logging():
+    logging.basicConfig(
+        level=logging.INFO,
+        format="%(asctime)s | %(levelname)s | %(message)s",
+        handlers=[
+            logging.FileHandler(LOG_FILE, encoding="utf-8"),
+            logging.StreamHandler(),
+        ],
+    )
+
+async def handle_csv(path: Path):
+    logging.info(f"New file: {path.name}")
+
+    # 1) pandas обработка (фильтрация)
+    df = pd.read_csv(path)
+    df2 = df[df["amount"] > 1000]  # любое условие
+
+    # 2) сохраняем временный файл
+    TMP.mkdir(exist_ok=True)
+    ts = datetime.utcnow().strftime("%Y%m%d_%H%M%S")
+    out = TMP / f"{path.stem}_{ts}.csv"
+    df2.to_csv(out, index=False)
+    logging.info(f"Processed saved: {out}")
+
+    # 3) асинхронная загрузка
+    key = f"{PROCESSED_PREFIX}/{out.name}"
+    await asyncio.to_thread(upload, out, key)
+    logging.info(f"Uploaded: s3://{BUCKET}/{key}")
+
+    # 4) архивируем исходный файл
+    ARCHIVE.mkdir(exist_ok=True)
+    shutil.move(str(path), str(ARCHIVE / path.name))
+    logging.info(f"Archived: {path.name}")
+
+    # 5) загружаем логм
+    await asyncio.to_thread(upload, LOG_FILE, LOG_KEY)
+    logging.info(f"Log uploaded: s3://{BUCKET}/{LOG_KEY}")
+
+async def main():
+    setup_logging()
+    INPUT.mkdir(exist_ok=True)
+
+    logging.info(f"Watching: {INPUT.resolve()}")
+    async for changes in awatch(INPUT):
+        for _, p in changes:
+            p = Path(p)
+            if p.suffix.lower() == ".csv" and p.exists():
+                await handle_csv(p)
+
+if __name__ == "__main__":
+    asyncio.run(main())
