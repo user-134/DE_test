@@ -1,11 +1,12 @@
 """
 ETL Pipeline
 Источник: books.toscrape.com
-База данных: PostgreSQL
+База данных: PostgreSQL (запускается через Docker)
 """
 
 import logging
 import time
+import random # Добавили для случайных задержек
 import requests
 import pandas as pd
 from bs4 import BeautifulSoup
@@ -21,18 +22,23 @@ logging.basicConfig(
 CONFIG = {
     "BASE_URL": "https://books.toscrape.com/",
     "HEADERS": {
-        "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36",
+        "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36",
         "Accept": "text/html,application/xhtml+xml,application/xml;q=0.9,image/webp,*/*;q=0.8",
         "Accept-Language": "ru-RU,ru;q=0.8,en-US;q=0.5,en;q=0.3",
         "Referer": "https://www.google.com/"
     },
-    "DELAY": 2,
+    "DELAY_MIN": 1, # Минимальная пауза
+    "DELAY_MAX": 3, # Максимальная пауза
     "MAX_RETRIES": 3,
     "TIMEOUT": 10
 }
 
-# База данных
-DB_URL = "postgresql://ваш_пользователь:ваш_пароль@localhost:5432/my_library"
+# База данных (совпадает с настройками в docker-compose.yaml)
+DB_URL = "postgresql://myuser:mypassword@localhost:5432/my_library"
+
+def get_random_delay():
+    """Возвращает случайное число секунд от DELAY_MIN до DELAY_MAX"""
+    return random.uniform(CONFIG["DELAY_MIN"], CONFIG["DELAY_MAX"])
 
 def get_page(url: str):
     """Отправляет GET-запрос с защитой от сбоев соединения"""
@@ -43,7 +49,9 @@ def get_page(url: str):
                 return BeautifulSoup(response.text, "html.parser")
         except Exception as e:
             logging.warning(f"Попытка {attempt + 1} для {url} провалена: {e}")
-        time.sleep(CONFIG["DELAY"])
+            
+        # Случайная пауза даже при ошибке, чтобы не спамить сервер
+        time.sleep(get_random_delay()) 
     return None
 
 def parse_books(soup) -> list:
@@ -89,14 +97,16 @@ def extract_data() -> list:
             logging.info("Достигнута последняя страница.")
             current_page_url = None 
             
-        time.sleep(CONFIG["DELAY"]) 
+        # Умная случайная пауза перед переходом на следующую страницу
+        delay = get_random_delay()
+        logging.info(f"Ожидание {delay:.2f} сек. перед следующим запросом...")
+        time.sleep(delay) 
         
     return all_books
 
-
 def main():
     """Оркестрация ETL процессов"""
-    # Extract
+    # 1. Extract
     logging.info("--- СТАРТ: EXTRACT ---")
     raw_data = extract_data()
     
@@ -106,7 +116,7 @@ def main():
 
     df = pd.DataFrame(raw_data)
 
-    # Transform
+    # 2. Transform
     logging.info("--- СТАРТ: TRANSFORM ---")
     df['price'] = df['price'].str.extract(r'(\d+\.\d+)').astype(float)
     
@@ -114,26 +124,33 @@ def main():
     df['rating'] = df['rating'].map(rating_map)
     df['stock'] = df['stock'].str.strip()
 
-    # Проверка на целостность
     initial_len = len(df)
-    df = df.dropna()
+    
+    # Удаление полных дубликатов (если парсер случайно зацепил одну книгу дважды)
+    df = df.drop_duplicates()
     if len(df) < initial_len:
-        logging.warning(f"Удалено {initial_len - len(df)} строк с пустыми значениями.")
+        logging.info(f"Удалено {initial_len - len(df)} строк-дубликатов.")
+        
+    # Проверка на пустые значения (целостность)
+    current_len = len(df)
+    df = df.dropna()
+    if len(df) < current_len:
+        logging.warning(f"Удалено {current_len - len(df)} строк с пустыми значениями.")
 
     # Сохраняем локальную копию
     df.to_csv("books_cleaned.csv", index=False, encoding="utf-8-sig")
     logging.info(f"Данные очищены. Итоговых записей: {len(df)}")
 
-    # Load
+    # 3. Load
     logging.info("--- СТАРТ: LOAD ---")
-    filtered_df = df[df['rating'] >= 4] # Берем только книги с рейтингом 4 и 5
+    filtered_df = df[df['rating'] >= 4]
     
     try:
         engine = create_engine(DB_URL)
         filtered_df.to_sql('top_books', engine, if_exists='replace', index=False)
         logging.info("✅ УСПЕШНО: Данные загружены в PostgreSQL!")
     except Exception as e:
-        logging.error(f"❌ Ошибка загрузки в БД: {e}")
+        logging.error(f"❌ Ошибка загрузки в БД. Проверьте запущен ли Docker контейнер! Ошибка: {e}")
 
 if __name__ == "__main__":
     main()
