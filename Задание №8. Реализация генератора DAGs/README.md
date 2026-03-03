@@ -25,10 +25,10 @@
 
 ## 🚀 Быстрый старт
 
-### 1. Подготовка окружения
+1. Подготовка окружения
 Клонируйте репозиторий и создайте файл переменных окружения:
 ```bash
-git clone [https://github.com/your-username/AnalystAutoFlow.git](https://github.com/your-username/AnalystAutoFlow.git)
+git clone [https://github.com/user-134/DE_test/tree/main/Задание%20№8.%20Реализация%20генератора%20DAGs.git](https://github.com/user-134/DE_test/tree/main/Задание%20№8.%20Реализация%20генератора%20DAGs.git)
 cd AnalystAutoFlow
 cp .env.example .env
 ```
