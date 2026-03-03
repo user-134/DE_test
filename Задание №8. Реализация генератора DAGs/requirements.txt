@@ -1,0 +1,19 @@
+# Ядро Airflow и базовые провайдеры
+apache-airflow==2.8.1
+apache-airflow-providers-postgres
+apache-airflow-providers-celery
+apache-airflow-providers-redis
+
+# Обработка данных и вычисления
+pandas>=2.0.0
+numpy>=1.24.0
+
+# Распределенные вычисления (если планируешь использовать Spark)
+apache-airflow-providers-apache-spark
+pyspark>=3.4.0
+
+# Сетевые запросы и API (полезно для выгрузки данных, например, о погоде)
+requests>=2.31.0
+
+# Шаблонизация (используется под капотом Airflow и для кодогенерации)
+Jinja2>=3.1.2
