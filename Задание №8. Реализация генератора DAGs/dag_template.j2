@@ -1,0 +1,32 @@
+from airflow import DAG
+from airflow.operators.python import PythonOperator
+from airflow.providers.common.sql.operators.sql import SQLExecuteQueryOperator
+from datetime import datetime
+
+# Сгенерировано автоматически AnalystAutoFlow
+
+with DAG(
+    dag_id='{{ target_id }}',
+    schedule_interval='{{ target_schedule }}',
+    start_date={{ start_date }},
+    owner='{{ target_owner }}',
+    catchup=False
+) as dag:
+
+    {% for task in tasks %}
+    {% if task.type == 'python' %}
+    {{ task.id }} = PythonOperator(
+        task_id='{{ task.id }}',
+        python_callable=lambda: print("Running {{ task.id }}"),
+    )
+    {% else %}
+    {{ task.id }} = SQLExecuteQueryOperator(
+        task_id='{{ task.id }}',
+        conn_id='postgres_default',
+        sql='sql_scripts/{{ task.file_name }}',
+    )
+    {% endif %}
+    {% endfor %}
+
+    # Цепочка выполнения задач
+    {{ task_chain }}
