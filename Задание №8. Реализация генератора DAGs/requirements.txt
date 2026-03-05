@@ -11,6 +11,7 @@ apache-airflow==2.8.1
 apache-airflow-providers-postgres==5.10.0 # Интеграция с PostgreSQL
 apache-airflow-providers-celery==3.5.1    # Распределенное выполнение задач
 apache-airflow-providers-redis==3.5.0     # Брокер сообщений для Celery
+apache-airflow-providers-common-sql
 
 # --- 3. Инструменты обработки данных (Для скриптов аналитиков) ---
 pandas>=2.0.0,<3.0.0                      # Обработка табличных данных
