@@ -6,7 +6,7 @@
 ![PostgreSQL](https://img.shields.io/badge/postgres-%23316192.svg?logo=postgresql&logoColor=white)
 ![pytest](https://img.shields.io/badge/pytest-passing-success.svg?logo=pytest)
 
-**AnalystAutoFlow** — это инструмент кодогенерации, который автоматически превращает SQL и Python скрипты аналитиков в готовые к продакшену DAG-файлы для Airflow. Аналитикам больше не нужно знать синтаксис Airflow: достаточно добавить метаданные в комментарии, а система сама построит граф задач, валидирует синтаксис и развернет код.
+**AnalystAutoFlow** - это инструмент кодогенерации, который автоматически превращает SQL и Python скрипты аналитиков в готовые к продакшену DAG-файлы для Airflow. Аналитикам больше не нужно знать синтаксис Airflow: достаточно добавить метаданные в комментарии, а система сама построит граф задач, валидирует синтаксис и развернет код.
 
 ## 🌟 Ключевые возможности
 
@@ -119,3 +119,18 @@ with DAG(dag_id='daily_sales_report', schedule_interval='@daily', ...) as dag:
 ```Bash
 make test
 ```
+---
+
+## История проекта: от исходных данных до финального результата в Airflow.
+
+
+
+<img width="518" height="276" alt="Снимок экрана 2026-03-05 в 17 16 46" src="https://github.com/user-attachments/assets/a532352d-a4c1-46f9-8173-71c7ecb39576" />
+
+Файл 01_extract.py. Демонстрирует главную фичу - Zero-Airflow подход для аналитиков.
+
+
+
+
+
+
