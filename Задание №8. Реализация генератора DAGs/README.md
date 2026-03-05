@@ -1,81 +1,112 @@
-# 🚀 AnalystAutoFlow
+# 🚀 AnalystAutoFlow: Автоматическая генерация DAG для Apache Airflow
 
 ![Python](https://img.shields.io/badge/python-3.9+-blue.svg)
 ![Airflow](https://img.shields.io/badge/Airflow-2.8.1-007A88?logo=Apache%20Airflow)
 ![Docker](https://img.shields.io/badge/docker-%230db7ed.svg?logo=docker&logoColor=white)
 ![PostgreSQL](https://img.shields.io/badge/postgres-%23316192.svg?logo=postgresql&logoColor=white)
+![pytest](https://img.shields.io/badge/pytest-passing-success.svg?logo=pytest)
 
-**AnalystAutoFlow** — это инструмент автоматической кодогенерации, который работает как мост между аналитиками данных и инфраструктурой Data Engineering. 
-
-Система автоматически сканирует директории со скриптами аналитиков (Python/SQL), извлекает метаданные, валидирует синтаксис (через AST) и генерирует готовые к продакшену DAG-файлы для Apache Airflow с помощью шаблонизатора Jinja2.
+**AnalystAutoFlow** — это инструмент кодогенерации, который автоматически превращает SQL и Python скрипты аналитиков в готовые к продакшену DAG-файлы для Airflow. Аналитикам больше не нужно знать синтаксис Airflow: достаточно добавить метаданные в комментарии, а система сама построит граф задач, валидирует синтаксис и развернет код.
 
 ## 🌟 Ключевые возможности
 
-* **Zero-Airflow Knowledge для аналитиков:** Аналитикам не нужно знать синтаксис Airflow. Они просто пишут свой `.py` или `.sql` код и добавляют метаданные в комментарии.
-* **Умный парсинг:** Автоматическое определение `dag_id`, `schedule`, `owner` через регулярные выражения.
-* **Безопасность (AST Validation):** Перед сохранением сгенерированного DAGа, код проверяется на синтаксические ошибки через встроенную библиотеку `ast`. Битовые файлы не попадают в продакшен.
-* **Динамический маппинг задач:** Скрипты автоматически превращаются в `PythonOperator` или `SQLExecuteQueryOperator` в зависимости от расширения файла.
-* **Готовая инфраструктура:** Полный стек (Airflow, Celery, Redis, PostgreSQL) разворачивается через `docker-compose`.
+* **Zero-Airflow Knowledge:** Аналитики пишут чистый Python или SQL. Вся логика оркестрации (операторы, связи, расписания) генерируется под капотом.
+* **Smart Parsing & Jinja2 Templating:** Автоматическое извлечение `dag_id`, `schedule` и `owner` через регулярные выражения с последующим рендерингом через шаблоны Jinja2.
+* **AST Validation (Безопасность кода):** Перед сохранением каждый сгенерированный DAG проходит строгую проверку синтаксиса через встроенную библиотеку `ast`. Невалидный код никогда не попадет в Airflow.
+* **Кастомная Docker-инфраструктура:** Полный стек (Airflow, CeleryExecutor, PostgreSQL, Redis) разворачивается через `docker-compose`. В кастомный образ вшита **Java (OpenJDK 17)** для бесшовной интеграции с **Apache Spark**.
+* **Developer Experience (DX):** Проект управляется через `Makefile` и покрыт изолированными unit-тестами (`pytest`).
 
-## 🏗 Архитектура
+## 🏗 Архитектура и структура проекта
 
-Проект состоит из двух основных компонентов:
-1. **Генератор (Python + Jinja2):** Парсит исходники, рендерит шаблоны, пишет логи.
-2. **Оркестратор (Docker + Airflow):** Исполняет сгенерированные графы на архитектуре с CeleryExecutor.
+```text
+AnalystAutoFlow/
+├── airflow/                 # Смонтированные volume для Airflow (dags, logs, plugins)
+├── projects/                # Исходные скрипты аналитиков (входные данные)
+├── tests/                   # Изолированные Unit-тесты (pytest)
+│   └── test_generator.py
+├── docker-compose.yml       # Инфраструктура оркестратора
+├── Dockerfile               # Сборка кастомного образа Airflow (с Java и зависимостями)
+├── requirements.txt         # Зависимости Python
+├── dag_template.j2          # Трафарет Jinja2 для генерации кода
+├── generator.py             # Ядро генерации
+├── Makefile                 # Управление проектом
+└── .env.example             # Шаблон переменных окружения
+```
+
+📋 Требования:
+Python 3.9+
+Docker и Docker Compose
+Make (для работы с Makefile)
 
 ## 🚀 Быстрый старт
 
 1. Подготовка окружения
-Клонируйте репозиторий и создайте файл переменных окружения:
+Клонируйте репозиторий и настройте переменные окружения:
 ```bash
-git clone [https://github.com/user-134/DE_test/tree/main/Задание%20№8.%20Реализация%20генератора%20DAGs.git](https://github.com/user-134/DE_test/tree/main/Задание%20№8.%20Реализация%20генератора%20DAGs.git)
-cd AnalystAutoFlow
+git clone [https://github.com/user-134/DE_test.git](https://github.com/user-134/DE_test.git)
+cd DE_test
 cp .env.example .env
 ```
+(Обязательно проверьте файл .env и укажите актуальные креды и AIRFLOW_UID).
 
-2. Запуск генератора
-Положите скрипты аналитиков в папку projects/название_дага/ и запустите скрипт:
-
-```bash
-python generator.py
-```
-Сгенерированные файлы автоматически появятся в airflow/dags/, а логи запуска запишутся в generation.log.
-
-3. Поднятие инфраструктуры Airflow
-Запустите Docker Compose:
+Для установки локальных зависимостей (для автокомплита в IDE и запуска тестов):
 
 ```bash
-docker-compose up -d --build
+pip install -r requirements.txt
 ```
-Web UI будет доступен по адресу: http://localhost:8080.
 
-💡 Пример использования
-Входящий файл аналитика (projects/sales_report/01_extract.py):
+2. Управление проектом (Makefile)
+Для удобства все рутинные операции вынесены в Makefile. Выполните команду make help, чтобы увидеть список доступных команд:
 
-```python
+make up: Собирает кастомный Docker-образ и поднимает инфраструктуру Airflow.
+make down: Останавливает и удаляет контейнеры оркестратора.
+make generate: Запускает парсинг папки projects/ и генерирует DAG-файлы.
+make test: Запускает набор Unit-тестов через pytest.
+make clean: Удаляет кэш, логи и сгенерированные DAGи для чистой сборки.
+
+💡 Пример использования (Workflow)
+Шаг 1. Аналитик создает скрипты в папке проекта:
+Путь: projects/sales_report/01_extract.py
+
+```Python
 # dag_id: daily_sales_report
 # schedule: @daily
 # owner: data_analytics_team
 
-def extract_data():
-    print("Extracting data...")
-```
-Результат (автоматически в airflow/dags/gen_daily_sales_report.py):
+import pandas as pd
 
-```python
+def extract_data():
+    print("Extracting sales data from API...")
+```
+Путь: projects/sales_report/02_transform.sql
+```SQL
+DELETE FROM raw_sales WHERE amount IS NULL;
+```
+
+Шаг 2. Запуск генератора:
+
+```Bash
+make generate
+```
+
+Шаг 3. Автоматический результат:
+Система валидирует код и создает готовый файл airflow/dags/gen_daily_sales_report.py:
+
+```Python
+# Сгенерировано автоматически AnalystAutoFlow 🤖
 with DAG(dag_id='daily_sales_report', schedule_interval='@daily', ...) as dag:
     task_01_extract = PythonOperator(...)
-    # Задачи автоматически выстраиваются в цепочку:
+    task_02_transform = SQLExecuteQueryOperator(...)
+    
+    # Цепочка выполнения выстраивается автоматически
     task_01_extract >> task_02_transform
 ```
-📂 Структура проекта
 
-```Plaintext
-├── airflow/                 # Смонтированные volume для Airflow (dags, logs, plugins)
-├── projects/                # Исходные скрипты аналитиков
-├── docker-compose.yml       # Инфраструктура (Airflow, Postgres, Redis)
-├── requirements.txt         # Зависимости Python
-├── dag_template.j2          # Трафарет Jinja2 для генерации DAGов
-├── generator.py             # Главный скрипт кодогенерации
-└── .env.example             # Пример переменных окружения
+🧪 Тестирование
+Проект использует pytest и встроенную фикстуру tmp_path для мокирования файловой системы, что гарантирует чистоту тестов и отсутствие мусора на диске.
+
+Для запуска тестов выполните:
+
+```Bash
+make test
 ```
