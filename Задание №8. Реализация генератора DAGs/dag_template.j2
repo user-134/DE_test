@@ -3,13 +3,17 @@ from airflow.operators.python import PythonOperator
 from airflow.providers.common.sql.operators.sql import SQLExecuteQueryOperator
 from datetime import datetime
 
-# Сгенерировано автоматически AnalystAutoFlow
+# Сгенерировано автоматически AnalystAutoFlow 🤖
+
+default_args = {
+    'owner': '{{ target_owner }}',
+    'start_date': {{ start_date }},
+}
 
 with DAG(
     dag_id='{{ target_id }}',
     schedule_interval='{{ target_schedule }}',
-    start_date={{ start_date }},
-    owner='{{ target_owner }}',
+    default_args=default_args,
     catchup=False
 ) as dag:
 
@@ -23,7 +27,8 @@ with DAG(
     {{ task.id }} = SQLExecuteQueryOperator(
         task_id='{{ task.id }}',
         conn_id='postgres_default',
-        sql='sql_scripts/{{ task.file_name }}',
+        # 🚀 Указываем новый точный путь: sql/имя_дага/имя_файла.sql
+        sql='sql/{{ target_id }}/{{ task.file_name }}',
     )
     {% endif %}
     {% endfor %}
