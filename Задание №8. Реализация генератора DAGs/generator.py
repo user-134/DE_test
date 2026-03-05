@@ -71,11 +71,26 @@ class AnalystAutoFlow:
         main_metadata = self.extract_metadata(files[0])
         dag_id = main_metadata.get('dag_id', folder_name)
 
+        sql_target_dir = self.target_dir / 'sql' / dag_id
+        sql_target_dir.mkdir(parents=True, exist_ok=True)
+
         tasks = []
         for f in files:
+            task_type = 'python' if f.suffix == '.py' else 'sql'
+
+            if task_type == 'sql':
+                import shutil
+                shutil.copy(f, sql_target_dir / f.name)
+                logging.info(f"Скопирован SQL файл: {f.name} -> {sql_target_dir}")
+
+            safe_task_id = f.stem if f.stem.startswith('task_') else f"task_{f.stem}"
+
+            # Заменяем возможные дефисы на нижние подчеркивания (дефисы тоже нельзя в именах переменных)
+            safe_task_id = safe_task_id.replace('-', '_')
+
             task_info = {
-                'id': f"task_{f.stem}",
-                'type': 'python' if f.suffix == '.py' else 'sql',
+                'id': safe_task_id,  # <-- Используем безопасное имя!
+                'type': task_type,
                 'file_name': f.name
             }
             tasks.append(task_info)
@@ -118,7 +133,7 @@ class AnalystAutoFlow:
 if __name__ == "__main__":
     # Указываем здесь свои папки
     SOURCE_DIR = 'projects'
-    TARGET_DIR = 'airflow/dags'
+    TARGET_DIR = 'dags'
     LOG_FILE = 'generation.log'
 
     # Чтобы скрипт не упал при первом запуске, если папки projects еще нет. Создаем её.
@@ -126,3 +141,5 @@ if __name__ == "__main__":
 
     flow = AnalystAutoFlow(SOURCE_DIR, TARGET_DIR, LOG_FILE)
     flow.generate()
+
+
