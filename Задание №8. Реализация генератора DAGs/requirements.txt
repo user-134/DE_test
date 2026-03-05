@@ -1,19 +1,26 @@
-# Ядро Airflow и базовые провайдеры
+# ==========================================
+# Зависимости проекта AnalystAutoFlow
+# ==========================================
+
+# --- 1. Ядро кодогенератора ---
+Jinja2>=3.1.2,<4.0.0                      # Шаблонизатор для генерации DAG-ов
+
+# --- 2. Apache Airflow и Провайдеры ---
+# Версия Airflow должна строго совпадать с базовым образом в Dockerfile
 apache-airflow==2.8.1
-apache-airflow-providers-postgres
-apache-airflow-providers-celery
-apache-airflow-providers-redis
+apache-airflow-providers-postgres==5.10.0 # Интеграция с PostgreSQL
+apache-airflow-providers-celery==3.5.1    # Распределенное выполнение задач
+apache-airflow-providers-redis==3.5.0     # Брокер сообщений для Celery
 
-# Обработка данных и вычисления
-pandas>=2.0.0
-numpy>=1.24.0
+# --- 3. Инструменты обработки данных (Для скриптов аналитиков) ---
+pandas>=2.0.0,<3.0.0                      # Обработка табличных данных
+numpy>=1.24.0,<2.0.0                      # Математические вычисления
+requests>=2.31.0,<3.0.0                   # API-вызовы и веб-запросы
 
-# Распределенные вычисления (если планируешь использовать Spark)
-apache-airflow-providers-apache-spark
-pyspark>=3.4.0
+# --- 4. Экосистема Big Data (Для работы со Spark) ---
+apache-airflow-providers-apache-spark==4.7.1
+pyspark>=3.4.0,<4.0.0
 
-# Сетевые запросы и API (полезно для выгрузки данных, например, о погоде)
-requests>=2.31.0
-
-# Шаблонизация (используется под капотом Airflow и для кодогенерации)
-Jinja2>=3.1.2
+# --- 5. Разработка и Тестирование (DevTools) ---
+pytest>=7.4.0,<8.0.0                      # Фреймворк для Unit-тестов
+black>=24.0.0                             # Автоформатирование кода (PEP8)
