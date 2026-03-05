@@ -34,13 +34,16 @@ AnalystAutoFlow/
 ```
 
 📋 Требования:
+```text
 Python 3.9+
 Docker и Docker Compose
 Make (для работы с Makefile)
+```
 
 ## 🚀 Быстрый старт
 
 1. Подготовка окружения
+   
 Клонируйте репозиторий и настройте переменные окружения:
 ```bash
 git clone [https://github.com/user-134/DE_test.git](https://github.com/user-134/DE_test.git)
@@ -56,16 +59,19 @@ pip install -r requirements.txt
 ```
 
 2. Управление проектом (Makefile)
+   
 Для удобства все рутинные операции вынесены в Makefile. Выполните команду make help, чтобы увидеть список доступных команд:
-
+```text
 make up: Собирает кастомный Docker-образ и поднимает инфраструктуру Airflow.
 make down: Останавливает и удаляет контейнеры оркестратора.
 make generate: Запускает парсинг папки projects/ и генерирует DAG-файлы.
 make test: Запускает набор Unit-тестов через pytest.
 make clean: Удаляет кэш, логи и сгенерированные DAGи для чистой сборки.
+```
 
 💡 Пример использования (Workflow)
 Шаг 1. Аналитик создает скрипты в папке проекта:
+
 Путь: projects/sales_report/01_extract.py
 
 ```Python
@@ -90,6 +96,7 @@ make generate
 ```
 
 Шаг 3. Автоматический результат:
+
 Система валидирует код и создает готовый файл airflow/dags/gen_daily_sales_report.py:
 
 ```Python
@@ -103,6 +110,7 @@ with DAG(dag_id='daily_sales_report', schedule_interval='@daily', ...) as dag:
 ```
 
 🧪 Тестирование
+
 Проект использует pytest и встроенную фикстуру tmp_path для мокирования файловой системы, что гарантирует чистоту тестов и отсутствие мусора на диске.
 
 Для запуска тестов выполните:
