@@ -127,19 +127,23 @@ make test
 Сценарий 1: Процесс генерации.
 
 Файл 01_extract.py. Демонстрирует главную фичу - Zero-Airflow подход для аналитиков.
+
 <img width="518" height="276" alt="Снимок экрана 2026-03-05 в 17 16 46" src="https://github.com/user-attachments/assets/a532352d-a4c1-46f9-8173-71c7ecb39576" />
 
 
 Скриншот вывода команды make help. Ценим Developer Experience (DX) и автоматизируем рутину.
+
 <img width="505" height="151" alt="Снимок экрана 2026-03-05 в 17 24 47" src="https://github.com/user-attachments/assets/770a4e7e-7569-4f83-a7e3-5a4581954c6e" />
 
 
 Скриншот вывода команды make generate (python generator.py).\
 Успешная генерация: ✅ DAG daily_sales_report готов!.
+
 <img width="258" height="37" alt="Снимок экрана 2026-03-05 в 17 26 01" src="https://github.com/user-attachments/assets/252243a4-b1b3-4480-88d2-20eb82975658" />
 
 
 Результат - файл gen_daily_sales_report.py. Задачи связываются оператором сдвига (task_01_extract >> task_02_transform). Jinja2 отработала идеально.
+
 <img width="593" height="560" alt="Снимок экрана 2026-03-05 в 17 29 42" src="https://github.com/user-attachments/assets/eb6bc155-4cb5-4ca6-867a-db62caa10aaa" />
 
 
@@ -147,9 +151,11 @@ make test
 
 Скриншот вывода команды make test, где видно 3 passed.\
 Наличие тестов является гарантией качества данного парсера метаданных.
+
 <img width="1345" height="233" alt="Снимок экрана 2026-03-05 в 17 32 50" src="https://github.com/user-attachments/assets/6f90a718-d9c0-428d-861f-54e79c26fda9" />
 
 Скриншот вывода файла generation.log. Программа оставляет аудит-след для мониторинга.
+
 <img width="867" height="49" alt="Снимок экрана 2026-03-05 в 17 36 26" src="https://github.com/user-attachments/assets/929a9536-0cde-4d3c-af96-573d6a4a9ee0" />
 
 Сценарий 3: Финальный результат
@@ -157,11 +163,13 @@ make test
 
 Главный экран Airflow (DAGs list). На скриншоте список дагов, где видно наш сгенерированный daily_sales_report.\
 Airflow подхватил файл и прочитал метаданные.
+
 <img width="523" height="219" alt="Снимок экрана 2026-03-05 в 19 17 16" src="https://github.com/user-attachments/assets/6270c675-5a39-48bc-b169-eb464592421e" />
 
 
 Наглядный результат работы программы.\
 Во вкладке Graph. На скриншоте схема, где один прямоугольник (задача Python) указывает стрелочкой на другой (задача SQL).
+
 <img width="1072" height="377" alt="Снимок экрана 2026-03-05 в 19 21 15" src="https://github.com/user-attachments/assets/e5a8256a-5f9a-4073-9118-35723b24de3e" />
 
 
