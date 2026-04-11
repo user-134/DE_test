@@ -1,0 +1,11 @@
+# Ядро
+pyspark==3.3.2
+apache-airflow==2.5.1
+
+# Интеграции
+kafka-python==2.0.2
+clickhouse-driver==0.2.5
+
+# Утилиты
+Faker==18.4.0 
+python-dotenv==1.0.0
