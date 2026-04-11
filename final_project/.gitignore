@@ -1,0 +1,23 @@
+# Python / Виртуальные окружения
+.env
+.venv
+venv/
+env/
+__pycache__/
+*.pyc
+
+# IDE (настройки PyCharm, VSCode)
+.idea/
+.vscode/
+
+# Данные и логи
+*.csv
+*.parquet
+*.json
+logs/
+plugins/
+data/
+
+# Временные файлы Mac/Windows
+.DS_Store
+Thumbs.db
