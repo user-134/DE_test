@@ -9,9 +9,4 @@ clickhouse-driver==0.2.5
 # Утилиты
 Faker==18.4.0
 python-dotenv==1.0.0
-streamlit
-pandas
-numpy
-plotly
-s3fs
-matplotlib
+
