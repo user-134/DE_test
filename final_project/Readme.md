@@ -7,14 +7,20 @@
 ![MinIO](https://img.shields.io/badge/MinIO-S3_Storage-red.svg?style=for-the-badge&logo=minio&logoColor=white)
 ![Kafka](https://img.shields.io/badge/Kafka-Streaming-black.svg?style=for-the-badge&logo=apachekafka&logoColor=white)
 ![Docker](https://img.shields.io/badge/Docker-Containerized-2496ED.svg?style=for-the-badge&logo=docker&logoColor=white)
+![Streamlit](https://img.shields.io/badge/Streamlit-FF4B4B?style=for-the-badge&logo=streamlit&logoColor=white)
 
-> **💡 От разрозненных транзакций к единому профилю клиента.** <br>
-> 
-> Автоматизированный End-to-End конвейер, эмулирующий инфраструктуру сетевого ритейла. \
-> Проект объединяет потоковую загрузку данных (Kafka → ClickHouse) и распределенную батч-обработку (PySpark) для трансформации полуструктурированных логов в унифицированную матрицу признаков. \
-> Итоговый Feature Store служит надежным фундаментом для BI-аналитики и обучения ML-моделей.
+💡 Идея проекта: От разрозненных транзакций к единому профилю клиента.
 
-## 🏗️ Архитектура конвейера 
+Автоматизированный End-to-End конвейер, трансформирующий поток сырых событий в обогащенные профили клиентов для аналитики.
+
+⚡ Высокопроизводительный прием данных в реальном времени (Kafka → ClickHouse). \
+⚙️ Распределенная обработка и агрегация признаков (PySpark) для формирования Feature Store. \
+📊 Интерактивная CVM-аналитика (Streamlit) и подготовка датасетов для обучения ML-моделей. \
+🏗 Автоматизация жизненного цикла данных и управление зависимостями пайплайна (Airflow).
+
+🎯 Результат: Готовая экосистема для сегментации аудитории, прогнозирования оттока и поиска скрытых паттернов поведения.
+
+## 🧬 Архитектура конвейера 
 
 Пайплайн спроектирован по гибридной архитектуре (Streaming + Batch). 
 
@@ -81,22 +87,24 @@ graph LR
 
 ```text
 📦 E-Commerce Data Pipeline
- ┣ 📂 dags                   # Направляемые ациклические графы (DAGs)
- ┃ ┗ 📜 spark_dag.py         # Логика оркестрации пайплайна в Airflow
- ┣ 📂 src                    # Исходный код пайплайна
- ┃ ┣ 📜 spark_etl.py         # Ядро: Трансформации PySpark и логика Feature Store
- ┃ ┣ 📜 data_generate.py     # Модуль: Генератор синтетических профилей и чеков
- ┃ ┣ 📜 producer.py          # Модуль: Отправка потоковых событий в Kafka
- ┃ ┣ 📜 etl_job.py           # Модуль: Альтернативные сценарии загрузки
- ┃ ┗ 📜 load_to_nosql.py     # Модуль: Интеграция с NoSQL решениями
- ┣ 📜 docker-compose.yml     # Инфраструктура Storage (ClickHouse, MinIO, Kafka, Zookeeper)
+ ┣ 📂 dags                       # Направляемые ациклические графы (DAGs)
+ ┃ ┗ 📜 spark_dag.py             # Логика оркестрации пайплайна в Airflow
+ ┣ 📂 src                        # Исходный код пайплайна
+ ┃ ┣ 📜 spark_etl.py             # Ядро: Трансформации PySpark и логика Feature Store
+ ┃ ┣ 📜 streamlit_app.py         # BI Модуль: Интерактивный дашборд клиентского опыта
+ ┃ ┣ 📜 data_generate.py         # Модуль: Генератор синтетических профилей и чеков
+ ┃ ┣ 📜 producer.py              # Модуль: Отправка потоковых событий в Kafka
+ ┃ ┣ 📜 requirements.txt         # Зависимости фронтенда (Streamlit)
+ ┃ ┣ 📜 etl_job.py               # Модуль: Альтернативные сценарии загрузки
+ ┃ ┗ 📜 load_to_nosql.py         # Модуль: Интеграция с NoSQL решениями
+ ┣ 📜 docker-compose.yml         # Инфраструктура Storage (ClickHouse, MinIO, Kafka, Zookeeper)
  ┣ 📜 docker-compose-airflow.yml # Инфраструктура Orchestration (Airflow, PostgreSQL, Redis)
- ┣ 📜 Dockerfile             # Кастомный образ: Airflow + Java + PySpark + ClickHouse JDBC
- ┣ 📜 Makefile               # Автоматизация команд запуска
- ┣ 📜 requirements.txt       # Зависимости Python
- ┣ 📜 .env.example           # Шаблон переменных окружения
- ┣ 📜 .gitignore             # Исключения для Git
- ┗ 📜 README.md              # Документация проекта
+ ┣ 📜 Dockerfile                 # Кастомный образ: Airflow + Java + PySpark + ClickHouse JDBC
+ ┣ 📜 Makefile                   # Автоматизация команд запуска
+ ┣ 📜 requirements.txt           # Зависимости инфраструктуры
+ ┣ 📜 .env.example               # Шаблон переменных окружения
+ ┣ 📜 .gitignore                 # Исключения для Git
+ ┗ 📜 README.md                  # Документация проекта
 ```
 
 ## 🛠️ Как развернуть и запустить локально
@@ -193,6 +201,30 @@ make generate-data
  
 > *Пример уведомления от Telegram Bot:*
 <img width="807" height="346" alt="Снимок экрана 2026-04-11 в 23 51 21" src="https://github.com/user-attachments/assets/86e4ca37-f3c5-42d6-a717-fc9d1468f8b9" />
+
+---
+## 📱 Data App: Интерактивный CVM-Дашборд
+
+Для демонстрации Data Value, поверх S3-хранилища развернуто веб-приложение на базе Streamlit и Plotly. Приложение реализует динамическую сегментацию клиентов и анализ паттернов:
+- Стратегический Дашборд: Мониторинг ключевых KPI (LTV, Активная база, Уровень оттока), визуализация воронок конверсии и распределения выручки по сегментам.
+- Аналитика Признаков: Глубокий анализ выбросов через Box Plots и сравнение поведенческих признаков (VIP vs Отток) для поиска инсайтов.
+- Массив данных: Визуализация сырой матрицы признаков (Feature Store) с градиентной подсветкой и возможностью выгрузки в CSV для передачи Data Science команде.
+
+Приложение спроектировано с учетом отказоустойчивости (Graceful Degradation): при недоступности хранилища MinIO генерируется богатый DEMO-датасет.
+
+---
+
+[![Open in Streamlit](https://static.streamlit.io/badges/streamlit_badge_black_white.svg)](https://appapppy-nxqrz9bm7lzqetzthw3ck3.streamlit.app/)
+
+---
+
+📸 Скриншоты дашборда:
+
+<img width="1440" height="549" alt="Снимок экрана 2026-04-12 в 15 31 07" src="https://github.com/user-attachments/assets/898a397f-078f-4b7f-a8f1-d4565ec7d0cb" />
+
+<img width="1440" height="794" alt="Снимок экрана 2026-04-12 в 15 31 48" src="https://github.com/user-attachments/assets/0416a42e-cabd-425a-bc91-1129574f0afb" />
+
+<img width="1440" height="549" alt="Снимок экрана 2026-04-12 в 15 33 14" src="https://github.com/user-attachments/assets/8a26ef98-cf64-4aa5-9af9-df238af2e2be" />
 
 ---
 
