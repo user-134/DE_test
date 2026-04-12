@@ -7,5 +7,12 @@ kafka-python==2.0.2
 clickhouse-driver==0.2.5
 
 # Утилиты
-Faker==18.4.0 
+Faker==18.4.0
 python-dotenv==1.0.0
+
+pyspark==3.3.2
+Faker==18.4.0
+s3fs 
+streamlit==1.41.0
+plotly==5.14.1
+matplotlib
